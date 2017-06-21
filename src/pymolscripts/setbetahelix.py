@@ -1,5 +1,5 @@
-
 from __future__ import print_function
+from pymol import cmd
 # torsion angles for various helices taken from:
 # Beke et al., Journal of Computational Chemistry 2006, vol. 27, no. 1 pp. 20-38, DOI 10.1002/jcc.20299
 

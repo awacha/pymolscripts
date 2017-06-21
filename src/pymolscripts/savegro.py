@@ -1,3 +1,4 @@
+from pymol import cmd
 import math
 
 def save_gro(filename, selection='(all)'):

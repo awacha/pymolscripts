@@ -14,12 +14,10 @@ def get_atom_parameters(selection):
     return namespace['lis']
 
 
-def pymol2ob(selection: str) -> openbabel.OBMol:
+def pymol2ob(selection):
     atoms = get_atom_parameters(selection)
     mol = openbabel.OBMol()
     for at in atoms:
         atm = openbabel.OBAtom()
         atm.SetId(at['ID'])
-        atm.Set
-    
     pass
