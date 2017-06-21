@@ -1,5 +1,6 @@
 from .utils import iterate_indices, iterate_neighbours, Atom
 from pymol import cmd
+from functools import cmp_to_key
 
 INVALID_RESID=0
 
@@ -50,16 +51,59 @@ def find_peptide_bonds(selection):
         yield (hydrogen,idx,carbon,oxygen)
 
 def number_residues(selection):
-    cmd.alter(selection, 'resv={}'.format(INVALID_RESID))
+    """
+    DESCRIPTION
+
+    Number residues in a peptid chain
+
+    USAGE
+
+    number_residues selection
+
+    ARGUMENTS
+
+    selection = a selection containing the peptide chain
+    """
+    cmd.alter(selection, 'resv={}'.format(0))
     peptide_bonds=list(find_peptide_bonds(selection))
     for i, n in enumerate([n for h,n,c,o in peptide_bonds]):
         cmd.alter('idx {}'.format(n),'resv={}'.format(i+1))
-    #for c,o in [(c,o) for h,n,c,o in peptide_bonds]:
-    #    cmd.alter('idx {} or idx {}'.format(c,o),'resv={}'.format(INVALID_RESID+100000000))
     for i,n in enumerate([n for h,n,c,o in peptide_bonds]):
-        #print(n)
         flood_fill_resi(n, Atom(n).resv, [c for h,n,c,o in peptide_bonds])
-    #cmd.alter('resi {}'.format(INVALID_RESID), 'resi=0')
+    cmd.sort(selection)
+    # now residue "0" will be the n-terminal residue. Adjust the numbers to be consecutive
+    residue_order = []
+    pairs = [(Atom(c).resv,Atom(n).resv) for h,n,c,o in peptide_bonds]
+    print('Pairs: ')
+    for p in pairs:
+        print('({}, {})'.format(p[0],p[1]))
+    residue_order = list(pairs[0])
+    while True:
+        # try to add the next number at the end
+        try:
+            nextpair = [p for p in pairs if p[0]==residue_order[-1]][0]
+            residue_order.append(nextpair[1])
+            continue
+        except IndexError:
+            pass
+        try:
+            prevpair = [p for p in pairs if p[1]==residue_order[0]][0]
+            residue_order.insert(0, prevpair[0])
+            continue
+        except IndexError:
+            pass
+        break
+
+    print('Residue order: {}'.format(residue_order))
+    indices_for_residues = [
+        list(iterate_indices('({}) and (resi {})'.format(selection, resi)))
+        for resi in range(len(peptide_bonds)+1)]
+    for indices, resi in zip(indices_for_residues, residue_order):
+        cmd.alter('idx '+'+'.join([str(i) for i in indices]), 'resv={}'.format(resi))
+    cmd.sort(selection)
+    return list(range(len(peptide_bonds)+1))
+
+cmd.extend('number_residues', number_residues)
 
 def flood_fill_resi(idx, resi, untouchable=None):
     if untouchable is None:
@@ -75,5 +119,53 @@ def flood_fill_resi(idx, resi, untouchable=None):
             #print('RESI of atom {} is {}, which is not invalid ({})'.format(neighbour, Atom(neighbour).resv, INVALID_RESID))
             pass
 
-def sort_resids(selection):
-    pass
+def number_chains(selection='all', numbers='ABCDEFGHIJKLMNOPQRSTUVWXYZ'):
+    """
+    DESCRIPTION
+
+    Find chains and number them consecutively
+
+    USAGE
+
+    number_chains [selection [, numbers]]
+
+    ARGUMENTS
+
+    selection = the selection in which this function operates
+
+    numbers = list of symbols to be applied. Defaults to capital letters of the ABC
+    """
+    cmd.alter(selection, 'chain=""')
+    chains = iter(numbers)
+    foundchains=[]
+    for idx in iterate_indices(selection):
+        if Atom(idx).chain:
+            # if this atom already has a chain ID set, continue with the next atom.
+            continue
+        foundchains.append(next(chains))
+        cmd.alter('(bymol idx {}) and ({})'.format(idx, selection), 'chain="{}"'.format(foundchains[-1]))
+    cmd.sort(selection)
+    print('Found chains: '+', '.join([str(c) for c in foundchains]))
+    return foundchains
+
+cmd.extend('number_chains', number_chains)
+
+def recognize_peptide(selection='all'):
+    chains = number_chains(selection)
+    for c in chains:
+        residues = number_residues('{} and (chain {})'.format(selection, c))
+        cmd.alter('{} and (chain {})'.format(selection, c),'name=""')
+        peptide_bonds = find_peptide_bonds('{} and (chain {})'.format(selection, c))
+        for h, n,c,o in peptide_bonds:
+            cmd.alter('idx {}'.format(n),'name="N"')
+            cmd.alter('idx {}'.format(c),'name="C"')
+            cmd.alter('idx {}'.format(o),'name="O"')
+        for r in residues:
+            # analyze each residue
+            analyze_residue(selection)
+
+
+cmd.extend('recognize_peptide', recognize_peptide)
+
+def analyze_residue(selection):
+    residue
