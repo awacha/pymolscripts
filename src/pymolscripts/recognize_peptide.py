@@ -1,6 +1,5 @@
 from .utils import iterate_indices, iterate_neighbours, Atom
 from pymol import cmd
-from functools import cmp_to_key
 
 INVALID_RESID=0
 
@@ -152,20 +151,50 @@ cmd.extend('number_chains', number_chains)
 
 def recognize_peptide(selection='all'):
     chains = number_chains(selection)
-    for c in chains:
-        residues = number_residues('{} and (chain {})'.format(selection, c))
-        cmd.alter('{} and (chain {})'.format(selection, c),'name=""')
-        peptide_bonds = find_peptide_bonds('{} and (chain {})'.format(selection, c))
+    for ch in chains:
+        residues = number_residues('{} and (chain {})'.format(selection, ch))
+        cmd.alter('({}) and (chain {})'.format(selection, ch),'name=""')
+        peptide_bonds = find_peptide_bonds('{} and (chain {})'.format(selection, ch))
         for h, n,c,o in peptide_bonds:
             cmd.alter('idx {}'.format(n),'name="N"')
             cmd.alter('idx {}'.format(c),'name="C"')
             cmd.alter('idx {}'.format(o),'name="O"')
         for r in residues:
             # analyze each residue
-            analyze_residue(selection)
-
+            h,n,c,o=peptide_bonds[r]
+            name_amino_acid('({}) and (chain {}) and (resi {})'.format(selection, ch, r),n,c,o)
+    cmd.sort()
 
 cmd.extend('recognize_peptide', recognize_peptide)
 
-def analyze_residue(selection):
-    residue
+def selection_from_indices(lis):
+    return 'idx '+'+'.join([str(x) for x in lis])
+
+def name_amino_acid(selection, n, c, o):
+    cmd.alter('idx {}'.format(n),'name="N"')
+    cmd.alter('idx {}'.format(c), 'name="C"')
+    cmd.alter('idx {}'.format(o), 'name="O"')
+    named = [n,c,o]
+    calpha=list(iterate_indices('(neighbor idx {}) and ({}) and not ({}) and (e. C)'.format(
+        c,selection,selection_from_indices(named))))
+    if not len(calpha)==1:
+        raise ValueError('No CA or more C atoms bound to C')
+    cmd.alter('idx {}'.format(calpha), 'name="CA"')
+    named.append(calpha)
+    distance_found=[n,c,o,calpha]
+    distances_from_calpha={calpha:0}
+    while True:
+        for idx in distances_from_calpha:
+            for nbr in iterate_neighbours(idx):
+                if nbr in distance_found:
+                    continue
+                if Atom(nbr).elem == 'H':
+                    continue
+                distances_from_calpha[nbr]=distances_from_calpha[idx]+1
+                distance_found.append(nbr)
+        if not cmd.count_atoms('({}) and not ({}) and not (e. H)'.format(selection, selection_from_indices(distance_found))):
+            break
+    for idx in distances_from_calpha:
+        symbols='ABGDEZHTIKLMNPO'
+        cmd.alter('idx {}'.format(idx), 'name="{}{}"'.format(Atom(idx).elem,symbols[distances_from_calpha[idx]]))
+    cmd.sort()
