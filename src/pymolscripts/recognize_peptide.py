@@ -3,6 +3,7 @@ from .utils import iterate_indices, iterate_neighbours
 from pymol import cmd
 from chempy import Atom, Bond
 import sys
+import os
 import networkx as nx
 INVALID_RESID=0
 
@@ -169,7 +170,7 @@ def recognize_peptide(rtpfile, selection='all'):
 
     ARGUMENTS
 
-    rtpfile = a GROMACS residue database (.rtp file)
+    rtpfile = a GROMACS residue database (.rtp file) or a GROMACS forcefield directory
 
     selection = selected group of atoms to operate on. Defaults to 'all'.
 
@@ -199,14 +200,20 @@ def recognize_peptide(rtpfile, selection='all'):
         needs to be fixed by the user.
     """
     chains = number_chains(selection)
+    rtpdata = list(graphs_from_rtp(rtpfile))
     for ch in chains:
-        print('Looking at chain {}')
+        print('Looking at chain {}'.format(ch))
         residues = number_residues('({}) and (chain {})'.format(selection, ch))
-        print('Found residues {} to {}'.format(min(residues),max(residues)))
+        print('  Found residues {} to {}'.format(min(residues),max(residues)))
         for r in residues:
             # analyze each residue
-            print ('Matching chain {}, residue {}'.format(ch, r))
-            match_amino_acid('({}) and (chain {}) and (resi {})'.format(selection, ch, r), rtpfile)
+            resn=match_amino_acid('({}) and (chain {}) and (resi {})'.format(selection, ch, r), rtpdata)
+            if resn is not None:
+                print ('  Residue {}/{}/ {}'.format(ch, r, resn))
+            else:
+                print ('  Residue {}/{}/ not matched'.format(ch, r))
+
+
     cmd.sort()
 
 
@@ -291,8 +298,15 @@ def graphs_from_rtp(rtpfile):
         str_type=basestring
     else:
         raise ValueError('Unsupported Python version')
-    if isinstance(rtpfile, str_type):
-        rtpfile = [rtpfile]
+    if isinstance(rtpfile, list) and all([isinstance(e, tuple) for e in rtpfile]):
+        for resname, graph in rtpfile:
+            yield resname, graph
+        return
+    elif isinstance(rtpfile, str_type):
+        if os.path.isdir(rtpfile):
+            rtpfile = [os.path.join(rtpfile,f) for f in os.listdir(rtpfile) if f.endswith('.rtp')]
+        else:
+            rtpfile = [rtpfile]
     for fn in rtpfile:
         with open(fn, 'rt') as f:
             lastresidue = None
@@ -342,13 +356,11 @@ def match_amino_acid(selection, rtpfile):
     for resname, Grtp in graphs_from_rtp(rtpfile):
         gm = nx.algorithms.isomorphism.GraphMatcher(Gselection, Grtp, nodematch)
         if gm.is_isomorphic():
-            print('Matched:',resname)
             for m in gm.mapping:
                 #print('  {} -> {}'.format(m,gm.mapping[m]))
                 cmd.alter('idx {}'.format(m), 'name="{}"'.format(gm.mapping[m]))
                 cmd.alter('idx {}'.format(m), 'resn="{}"'.format(resname))
             return resname
-    print('No match.')
     return None
 
 
