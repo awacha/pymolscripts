@@ -83,8 +83,8 @@ def helicize_beta_peptide(helixtype, selection='all'):
         n = '({}) and (name N) and (resi {})'.format(selection,r)
         prevc = '(neighbor ({})) and (name C)'.format(n)
         nextn = '(neighbor ({})) and (name N)'.format(c)
-        for name, selection in [('CA',calpha),('CB',cbeta),('C',c),('N',n),('prevC',prevc), ('nextN',nextn)]:
-            cnt = cmd.count_atoms(selection)
+        for name, sel in [('CA',calpha),('CB',cbeta),('C',c),('N',n),('prevC',prevc), ('nextN',nextn)]:
+            cnt = cmd.count_atoms(sel)
             if cnt!=1:
                 print('Error in residue {}: number of {} atoms found is {}'.format(r, name, cnt))
                 break
