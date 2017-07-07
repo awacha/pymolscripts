@@ -41,7 +41,7 @@ def find_peptide_bonds(selection):
             continue
         for h in hydrogens:
             dih=cmd.get_dihedral('idx {}'.format(h),'idx {}'.format(idx),'idx {}'.format(carbon),'idx {}'.format(oxygen))
-            if abs(dih)>160:
+            if abs(dih)>140:
                 hydrogen = h
                 break
         else:
@@ -212,61 +212,30 @@ def recognize_peptide(rtpfile, selection='all'):
                 print ('  Residue {}/{}/ {}'.format(ch, r, resn))
             else:
                 print ('  Residue {}/{}/ not matched'.format(ch, r))
-
-
+            if resn in ['B3Q', 'DB3Q']:
+                fix_gln_hydrogens('({}) and (chain {}) and (resi {})'.format(selection, ch, r))
     cmd.sort()
 
+def fix_gln_hydrogens(selection):
+    """Fix the naming of cis and trans hydrogens in glutamine"""
+    # HZ21 is the cis, HZ22 is the trans
+    for hindex in iterate_indices('({}) and (name HZ21+HZ22)'.format(selection)):
+        if cmd.get_dihedral('(idx {}) and ({})'.format(hindex, selection),
+                            '(name NZ2) and ({})'.format(selection),
+                            '(name CE) and ({})'.format(selection),
+                            '(name OZ1) and ({})'.format(selection)) < 90:
+            cmd.alter('(idx {}) and ({})'.format(hindex, selection),
+                      'name="HZ21"')
+        else:
+            cmd.alter('(idx {}) and ({})'.format(hindex, selection),
+                      'name="HZ22"')
 
-#def selection_from_indices(lis):
-#    return 'idx '+'+'.join([str(x) for x in lis])
-#
-# def name_amino_acid(selection, n, c, o):
-#     #print('Naming amino acid in selection: ({}). N: {}, C: {}, O: {}'.format(selection,n,c,o))
-#     cmd.alter('idx {}'.format(n),'name="N"')
-#     cmd.alter('idx {}'.format(c), 'name="C"')
-#     cmd.alter('idx {}'.format(o), 'name="O"')
-#     named = [n,c,o]
-#     calpha=list(iterate_indices('(neighbor idx {}) and ({}) and not ({}) and (e. C)'.format(
-#         c,selection,selection_from_indices(named))))
-#     if not len(calpha)==1:
-#         raise ValueError('No CA or more C atoms bound to C')
-#     calpha=calpha[0]
-#     cmd.alter('idx {}'.format(calpha), 'name="CA"')
-#     named.append(calpha)
-#     distance_found=[n,c,o,calpha]
-#     distances_from_calpha={calpha:0}
-#     previous_atom_in_chain={}
-#     while True:
-#         for idx in list(distances_from_calpha.keys()):
-#             for nbr in iterate_neighbours(idx):
-#                 if nbr in distance_found:
-#                     continue
-#                 if get_elem(nbr) == 'H':
-#                     continue
-#                 distances_from_calpha[nbr]=distances_from_calpha[idx]+1
-#                 previous_atom_in_chain[nbr]=idx
-#                 distance_found.append(nbr)
-#         if not cmd.count_atoms('({}) and not ({}) and not (e. H)'.format(selection, selection_from_indices(distance_found))):
-#             break
-#     for idx in distances_from_calpha:
-#         symbols='ABGDEZHTIKLMNPO'
-#         same_level_atoms = [i for i in distances_from_calpha if distances_from_calpha[i]==distances_from_calpha[idx]]
-#         if len(same_level_atoms) == 1:
-#             cmd.alter('idx {}'.format(idx), 'name="{}{}"'.format(get_elem(idx),symbols[distances_from_calpha[idx]]))
-#         else: # len(same_level_atoms) cannot be 0, the list contains at least `idx`
-#             pass
-#             #ToDo
-#             # more atoms are at the same distance from CA
-#             # Rule 1): check the previous atom
-#
-#     # cmd.sort() must not be called, it messes up the indices!
 
 def select_peptide_bonds(selection, newselectionprefix='pb_'):
     i=0
     for h,n,c,o in find_peptide_bonds(selection):
         cmd.select('{}{}'.format(newselectionprefix,i), 'idx {}+{}+{}+{}'.format(h,n,c,o))
         i+=1
-
 
 def selection_to_graph(selection):
     G=nx.Graph()
@@ -320,7 +289,7 @@ def graphs_from_rtp(rtpfile):
                 if not l:
                     continue
                 try:
-                    l=l[:l.index(';')]
+                    l=l[:l.index(';')].strip()
                 except ValueError:
                     pass
                 if l.startswith('[') and l.endswith(']'):
@@ -343,21 +312,11 @@ def graphs_from_rtp(rtpfile):
 def match_amino_acid(selection, rtpfile):
     def nodematch(attr1, attr2):
         return attr1['element'] == attr2['element']
-
     Gselection = selection_to_graph(selection)
-    #print([n[1] for n in Gselection.nodes(data=True)])
-    #labels = {n[0]:n[1]['element'] for n in Gselection.nodes(data=True)}
-    #print('Labels:',labels)
-    #nx.draw(Gselection, ax=plt.gca(), pos = nx.spring_layout(
-    #            Gselection, k=0.01,
-    #            iterations=500), with_labels=True, labels = labels)
-    #plt.gcf().canvas.draw()
-    #plt.show()
     for resname, Grtp in graphs_from_rtp(rtpfile):
         gm = nx.algorithms.isomorphism.GraphMatcher(Gselection, Grtp, nodematch)
         if gm.is_isomorphic():
             for m in gm.mapping:
-                #print('  {} -> {}'.format(m,gm.mapping[m]))
                 cmd.alter('idx {}'.format(m), 'name="{}"'.format(gm.mapping[m]))
                 cmd.alter('idx {}'.format(m), 'resn="{}"'.format(resname))
             return resname
