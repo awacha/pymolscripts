@@ -220,10 +220,10 @@ def fix_gln_hydrogens(selection):
     """Fix the naming of cis and trans hydrogens in glutamine"""
     # HZ21 is the cis, HZ22 is the trans
     for hindex in iterate_indices('({}) and (name HZ21+HZ22)'.format(selection)):
-        if cmd.get_dihedral('(idx {}) and ({})'.format(hindex, selection),
-                            '(name NZ2) and ({})'.format(selection),
-                            '(name CE) and ({})'.format(selection),
-                            '(name OZ1) and ({})'.format(selection)) < 90:
+        if abs(cmd.get_dihedral('(idx {}) and ({})'.format(hindex, selection),
+                                '(name NZ2) and ({})'.format(selection),
+                                '(name CE) and ({})'.format(selection),
+                                '(name OZ1) and ({})'.format(selection))) < 90:
             cmd.alter('(idx {}) and ({})'.format(hindex, selection),
                       'name="HZ21"')
         else:
