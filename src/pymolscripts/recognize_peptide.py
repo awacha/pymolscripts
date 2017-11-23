@@ -322,9 +322,28 @@ def match_amino_acid(selection, rtpfile):
             return resname
     return None
 
+def select_beta_backbone(selectionname='bbone', originalselection='all'):
+    """
+    DESCRIPTION
+
+    Select the backbone of beta-peptides
+
+    USAGE
+
+    select_beta_backbone name [, originalselection]
+
+    ARGUMENTS
+
+    name = name of the new selection
+
+    originalselection = superset in which the backbone will be searched
+    """
+    cmd.select(selectionname, '({}) and name CA+CB+CC+C+O+N+HN'.format(originalselection))
+
 
 cmd.extend('number_residues', number_residues)
 cmd.extend('number_chains', number_chains)
 cmd.extend('recognize_peptide', recognize_peptide)
 cmd.extend('select_peptide_bonds', select_peptide_bonds)
 cmd.extend('match_amino_acid', match_amino_acid)
+cmd.extend('select_beta_backbone', select_beta_backbone)
