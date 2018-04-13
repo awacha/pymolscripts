@@ -1,8 +1,19 @@
-import pymol
 import sys
+import warnings
+
 import matplotlib
-matplotlib.use('TkAgg')
+import pymol
+
+with warnings.catch_warnings():
+    warnings.simplefilter('error')
+    try:
+        matplotlib.use('TkAgg')
+    except UserWarning:
+        pass
+
+import matplotlib.backends
 from matplotlib.backends import backend_tkagg
+
 
 def _new_figure_manager(num, *args, **kwargs):
     if pymol._ext_gui is None:
@@ -23,5 +34,6 @@ def _new_figure_manager(num, *args, **kwargs):
         figManager.show()
     return figManager
 
+
 new_figure_manager = backend_tkagg.new_figure_manager
-backend_tkagg.new_figure_manager=_new_figure_manager
+backend_tkagg.new_figure_manager = _new_figure_manager

@@ -66,16 +66,16 @@ def iterate_indices(selection):
     space = {'lis': []}
     cmd.iterate(selection, 'lis.append(index)', space=space)
     for l in space['lis']:
-        yield l
+        yield int(l)
 
 
-def iterate_neighbours(selection):
+def iterate_neighbours(selection, parent):
     """Iterate over the indices of the neighbouring atoms of `selection`
 
     `selection`: can either be a numeric index (integer) or a selection string
     """
     if isinstance(selection, int):
-        selection = '(idx {})'.format(selection)
+        selection = '(idx {}) and ({})'.format(selection, parent)
     for idx in iterate_indices('neighbor ({})'.format(selection)):
         yield idx
 
@@ -112,7 +112,7 @@ def get_interaction_groups(selection):
     """
     bonds = []
     for idx in iterate_indices(selection):
-        for idx1 in iterate_neighbours(idx):
+        for idx1 in iterate_neighbours(idx, selection):
             if (idx1, idx) not in bonds and (idx, idx1) not in bonds:
                 bonds.append((idx, idx1))
 
@@ -120,7 +120,7 @@ def get_interaction_groups(selection):
         angles = []
         for b in bonds:
             for bond in [b, b[::-1]]:
-                for idx3 in iterate_neighbours(bond[0]):
+                for idx3 in iterate_neighbours(bond[0], selection):
                     if idx3 in bond:
                         continue
                     if (idx3,) + bond not in angles and bond[::-1] + (idx3,) not in angles:
@@ -130,5 +130,3 @@ def get_interaction_groups(selection):
     angles = extend_sequence(bonds)
     dihedrals = extend_sequence(angles)
     return bonds, angles, dihedrals
-
-cmd.extend('get_atom_parameters', get_atom_parameters)

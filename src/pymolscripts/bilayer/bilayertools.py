@@ -1,5 +1,6 @@
-from pymol import cmd
 import numpy as np
+from pymol import cmd
+
 
 def select_intralayer_waters(sele_headgroup, sele_water, selectionname):
     """
@@ -27,16 +28,14 @@ def select_intralayer_waters(sele_headgroup, sele_water, selectionname):
         found. All waters where either atom is between these two limits are
         selected.
     """
-    space={'lis':[]}
-    cmd.iterate_state(-1, sele_headgroup, 'lis.append(z)',space=space)
-    zmean=np.mean(space['lis'])
-    zmin = np.mean([l for l in space['lis'] if l<zmean])
-    zmax = np.mean([l for l in space['lis'] if l>zmean])
+    space = {'lis': []}
+    cmd.iterate_state(-1, sele_headgroup, 'lis.append(z)', space=space)
+    zmean = np.mean(space['lis'])
+    zmin = np.mean([l for l in space['lis'] if l < zmean])
+    zmax = np.mean([l for l in space['lis'] if l > zmean])
     print('zmin: {}'.format(zmin))
     print('zmax: {}'.format(zmax))
-    sel='byres (({}) and (z>{}) and (z<{}))'.format(sele_water,zmin,zmax)
-    print('selection:',sel)
+    sel = 'byres (({}) and (z>{}) and (z<{}))'.format(sele_water, zmin, zmax)
+    print('selection:', sel)
     cmd.select(selectionname, sel)
     print('{} atoms selected.'.format(cmd.count_atoms(sel)))
-
-cmd.extend('select_intralayer_waters',select_intralayer_waters)

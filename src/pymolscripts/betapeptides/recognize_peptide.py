@@ -1,70 +1,97 @@
 from __future__ import print_function
-from .utils import iterate_indices, iterate_neighbours
-from pymol import cmd
-from chempy import Atom, Bond
-import sys
+
+import logging
 import os
+import sys
+
 import networkx as nx
-INVALID_RESID=0
+from chempy import Atom, Bond
+from pymol import cmd
+
+from src.pymolscripts.utils import iterate_indices, iterate_neighbours
+
+INVALID_RESID = 0
+
+logger = logging.getLogger(__name__)
+
 
 def find_peptide_bonds(selection):
+    logger.debug('Finding peptide bonds in selection {}:'.format(selection))
     for idx in iterate_indices('({}) and (e. N)'.format(selection)):
+        logger.debug('Candidate N: {}'.format(idx))
         # this nitrogen should have:
         # - at least one hydrogen neighbour
         # - one carbon neighbour such as it has exactly one oxygen
         #      neighbour which has no other neighbours
-        hydrogens = list(iterate_indices('(neighbor (idx {})) and (e. H)'.format(idx)))
+        hydrogens = list(iterate_indices('(neighbor (idx {})) and (e. H) and ({})'.format(idx, selection)))
         if not hydrogens:
             # check if idx is part of a proline ring
-            if not ((cmd.count_atoms('(e. C) and (byring idx {})'.format(idx)) == 4) and
-                (cmd.count_atoms('byring idx {}'.format(idx))==5)):
+            if not ((cmd.count_atoms('(e. C) and (byring idx {}) and ({})'.format(idx, selection)) == 4) and
+                    (cmd.count_atoms('(byring idx {}) and ({})'.format(idx, selection)) == 5)):
                 # idx is not part of a 5-ring with 4 other carbon atoms
                 continue
-            #print('Idx {} is a proline nitrogen'.format(idx))
-            hydrogens = list(iterate_indices('(neighbor (idx {0})) and (byring idx {0})'.format(idx)))
+            logger.debug('Idx {} is a proline nitrogen'.format(idx))
+            hydrogens = list(
+                iterate_indices('(neighbor (idx {0})) and (byring idx {0}) and ({1})'.format(idx, selection)))
             # now hydrogens contains two CARBON atoms!!!
         carbon = None
         oxygen = None
-        for c in iterate_indices('(neighbor (idx {})) and (e. C)'.format(idx)):
-            for o in iterate_indices('(neighbor (idx {})) and (e. O)'.format(c)):
-                oneighbours = list(iterate_neighbours(o))
-                if oneighbours == [c]:
+        for c in iterate_indices('(neighbor (idx {})) and (e. C) and ({})'.format(idx, selection)):
+            logger.debug('Candidate C: {}'.format(c))
+            for o in iterate_indices('(neighbor (idx {})) and (e. O) and ({})'.format(c, selection)):
+                logger.debug('Candidate O: {}'.format(o))
+                oneighbours = list(iterate_neighbours(o, selection))
+                if len(oneighbours) == 1:
+                    logger.debug('Carbon is {}, oxygen is {}'.format(c, o))
                     carbon = c
                     oxygen = o
                     break
             else:
+                logger.debug('No good oxygens for this C')
                 continue
             break
         else:
+            logger.debug('No good carbons for this N.')
             continue
         if carbon is None or oxygen is None:
+            logger.debug('No carbon or no oxygen -> no N')
             continue
         for h in hydrogens:
-            dih=cmd.get_dihedral('idx {}'.format(h),'idx {}'.format(idx),'idx {}'.format(carbon),'idx {}'.format(oxygen))
-            if abs(dih)>140:
+            dih = cmd.get_dihedral('(idx {}) and ({})'.format(h, selection),
+                                   '(idx {}) and ({})'.format(idx, selection),
+                                   '(idx {}) and ({})'.format(carbon, selection),
+                                   '(idx {}) and ({})'.format(oxygen, selection))
+            if abs(dih) > 140 or abs(dih) < 40:
                 hydrogen = h
                 break
         else:
+            logger.debug('No appropriate (planar) hydrogens for this nitrogen, oxygen and carbon.')
             continue
-        if (len(hydrogens) >1) and not cmd.count_atoms('(e. C) and (idx {})'.format(hydrogen)):
+        if (len(hydrogens) > 1) and not cmd.count_atoms('(e. C) and (idx {}) and ({})'.format(hydrogen, selection)):
             # if the nitrogen has more than one hydrogens and the trans hydrogen is not a carbon
             # (i.e. this peptide bond does not belong to a proline)
             continue
-        yield (hydrogen,idx,carbon,oxygen)
+        logger.debug('Found peptide bond: {}, {}, {}, {}'.format(hydrogen, idx, carbon, oxygen))
+        yield (hydrogen, idx, carbon, oxygen)
 
-def get_param(idx, param):
-    space = {'lis':[]}
-    cmd.iterate('idx {}'.format(idx), 'lis.append({})'.format(param), space=space)
+
+def get_param(idx, param, selection='all'):
+    space = {'lis': []}
+    cmd.iterate('(idx {}) and ({})'.format(idx, selection), 'lis.append({})'.format(param), space=space)
     return space['lis'][0]
 
-def get_resv(idx):
-    return get_param(idx, 'resv')
 
-def get_chain(idx):
-    return get_param(idx, 'chain')
+def get_resv(idx, selection='all'):
+    return get_param(idx, 'resv', selection)
 
-def get_elem(idx):
-    return get_param(idx, 'elem')
+
+def get_chain(idx, selection='all'):
+    return get_param(idx, 'chain', selection)
+
+
+def get_elem(idx, selection='all'):
+    return get_param(idx, 'elem', selection)
+
 
 def number_residues(selection):
     """
@@ -80,27 +107,36 @@ def number_residues(selection):
 
     selection = a selection containing the peptide chain
     """
+    logger.debug('number_residues in selection "{}"'.format(selection))
     cmd.alter(selection, 'resv={}'.format(0))
-    peptide_bonds=list(find_peptide_bonds(selection))
-    for i, n in enumerate([n for h,n,c,o in peptide_bonds]):
-        cmd.alter('idx {}'.format(n),'resv={}'.format(i+1))
-    for i,n in enumerate([n for h,n,c,o in peptide_bonds]):
-        flood_fill_resi(n, get_resv(n), [c for h,n,c,o in peptide_bonds])
+    peptide_bonds = list(find_peptide_bonds(selection))
+    logger.debug('Number of peptide bonds found: {}'.format(len(peptide_bonds)))
+    for i, n in enumerate([n for h, n, c, o in peptide_bonds]):
+        cmd.alter('(idx {}) and ({})'.format(n, selection), 'resv={}'.format(i + 1))
+    for i, n in enumerate([n for h, n, c, o in peptide_bonds]):
+        flood_fill_resi(n, get_resv(n, selection), [c for h, n, c, o in peptide_bonds], selection)
+    # now set the residue index of the amide bond C=O-s
+    for h, n, c, o in peptide_bonds:
+        for idx in iterate_neighbours(c, selection):
+            if not cmd.count_atoms('(idx {}) and ({}) and (idx {} or idx {})'.format(idx, selection, n, o)):
+                # this is the alpha carbon of the current residue
+                cmd.alter('(idx {} or idx {}) and ({})'.format(c, o, selection),
+                          'resv={}'.format(get_resv(idx, selection)))
     cmd.sort(selection)
     # now residue "0" will be the n-terminal residue. Adjust the numbers to be consecutive
     residue_order = []
-    pairs = [(get_resv(c),get_resv(n)) for h,n,c,o in peptide_bonds]
+    pairs = [(get_resv(c, selection), get_resv(n, selection)) for h, n, c, o in peptide_bonds]
     residue_order = list(pairs[0])
     while True:
         # try to add the next number at the end
         try:
-            nextpair = [p for p in pairs if p[0]==residue_order[-1]][0]
+            nextpair = [p for p in pairs if p[0] == residue_order[-1]][0]
             residue_order.append(nextpair[1])
             continue
         except IndexError:
             pass
         try:
-            prevpair = [p for p in pairs if p[1]==residue_order[0]][0]
+            prevpair = [p for p in pairs if p[1] == residue_order[0]][0]
             residue_order.insert(0, prevpair[0])
             continue
         except IndexError:
@@ -109,24 +145,27 @@ def number_residues(selection):
 
     indices_for_residues = [
         list(iterate_indices('({}) and (resi {})'.format(selection, resi)))
-        for resi in range(len(peptide_bonds)+1)]
+        for resi in range(len(peptide_bonds) + 1)]
     for newresi, oldresi in enumerate(residue_order):
-        cmd.alter('idx '+'+'.join([str(i) for i in indices_for_residues[oldresi]]), 'resv={}'.format(newresi))
+        sel = '({}) and '.format(selection) + '(idx ' + '+'.join([str(i) for i in indices_for_residues[oldresi]]) + ')'
+        logger.debug('SEL:   {}'.format(sel))
+        cmd.alter(sel, 'resv={}'.format(newresi))
     cmd.sort(selection)
-    return list(range(len(peptide_bonds)+1))
+    return list(range(len(peptide_bonds) + 1))
 
 
-def flood_fill_resi(idx, resi, untouchable=None):
+def flood_fill_resi(idx, resi, untouchable=None, selection='all'):
     if untouchable is None:
         untouchable = []
-    for neighbour in iterate_neighbours(idx):
+    for neighbour in iterate_neighbours(idx, selection):
         if neighbour in untouchable:
             continue
-        if get_resv(neighbour) == INVALID_RESID:
-            cmd.alter('idx {}'.format(neighbour), 'resv={}'.format(resi))
-            flood_fill_resi(neighbour, resi)
+        if get_resv(neighbour, selection) == INVALID_RESID:
+            cmd.alter('({}) and (idx {})'.format(selection, neighbour), 'resv={}'.format(resi))
+            flood_fill_resi(neighbour, resi, untouchable, selection)
         else:
             pass
+
 
 def number_chains(selection='all', numbers='ABCDEFGHIJKLMNOPQRSTUVWXYZ'):
     """
@@ -146,16 +185,18 @@ def number_chains(selection='all', numbers='ABCDEFGHIJKLMNOPQRSTUVWXYZ'):
     """
     cmd.alter(selection, 'chain=""')
     chains = iter(numbers)
-    foundchains=[]
+    foundchains = []
+    logger.debug('Finding chains among {} atoms'.format(cmd.count_atoms(selection)))
     for idx in iterate_indices(selection):
-        if get_chain(idx):
+        if get_chain(idx, selection):
             # if this atom already has a chain ID set, continue with the next atom.
             continue
         foundchains.append(next(chains))
         cmd.alter('(bymol idx {}) and ({})'.format(idx, selection), 'chain="{}"'.format(foundchains[-1]))
     cmd.sort(selection)
-    print('Found chains: '+', '.join([str(c) for c in foundchains]))
+    logger.debug('Found chains: ' + ', '.join([str(c) for c in foundchains]))
     return foundchains
+
 
 def recognize_peptide(rtpfile, selection='all'):
     """
@@ -204,17 +245,18 @@ def recognize_peptide(rtpfile, selection='all'):
     for ch in chains:
         print('Looking at chain {}'.format(ch))
         residues = number_residues('({}) and (chain {})'.format(selection, ch))
-        print('  Found residues {} to {}'.format(min(residues),max(residues)))
+        print('  Found residues {} to {}'.format(min(residues), max(residues)))
         for r in residues:
             # analyze each residue
-            resn=match_amino_acid('({}) and (chain {}) and (resi {})'.format(selection, ch, r), rtpdata)
+            resn = match_amino_acid('({}) and (chain {}) and (resi {})'.format(selection, ch, r), rtpdata)
             if resn is not None:
-                print ('  Residue {}/{}/ {}'.format(ch, r, resn))
+                print('  Residue {}/{}/ {}'.format(ch, r, resn))
             else:
-                print ('  Residue {}/{}/ not matched'.format(ch, r))
+                print('  Residue {}/{}/ not matched'.format(ch, r))
             if resn in ['B3Q', 'DB3Q']:
                 fix_gln_hydrogens('({}) and (chain {}) and (resi {})'.format(selection, ch, r))
     cmd.sort()
+
 
 def fix_gln_hydrogens(selection):
     """Fix the naming of cis and trans hydrogens in glutamine"""
@@ -232,51 +274,45 @@ def fix_gln_hydrogens(selection):
 
 
 def select_peptide_bonds(selection, newselectionprefix='pb_'):
-    i=0
-    for h,n,c,o in find_peptide_bonds(selection):
-        cmd.select('{}{}'.format(newselectionprefix,i), 'idx {}+{}+{}+{}'.format(h,n,c,o))
-        i+=1
+    i = 0
+    for h, n, c, o in find_peptide_bonds(selection):
+        cmd.select('{}{}'.format(newselectionprefix, i), 'idx {}+{}+{}+{}'.format(h, n, c, o))
+        i += 1
+
 
 def selection_to_graph(selection):
-    G=nx.Graph()
+    G = nx.Graph()
     model = cmd.get_model(selection)
     for atom in model.atom:
         assert isinstance(atom, Atom)
-        G.add_node(atom.index, {'Z':atom.get_number(), 'idx':atom.index, 'element':atom.symbol})
-        #print('Adding atom {}'.format(atom.index))
+        G.add_node(atom.index, Z=atom.get_number(), idx=atom.index, element=atom.symbol)
+        # print('Adding atom {}'.format(atom.index))
     for bond in model.bond:
         assert isinstance(bond, Bond)
-        idx1=model.atom[bond.index[0]].index
-        idx2=model.atom[bond.index[1]].index
-        #print('Adding edge between {} and {}'.format(idx1, idx2))
-        G.add_edge(idx1, idx2, {'order':bond.order, 'idx1':idx1, 'idx2':idx2})
+        idx1 = model.atom[bond.index[0]].index
+        idx2 = model.atom[bond.index[1]].index
+        # print('Adding edge between {} and {}'.format(idx1, idx2))
+        G.add_edge(idx1, idx2, order=bond.order, idx1=idx1, idx2=idx2)
     return G
 
-def graphs_from_rtp(rtpfile):
-    def generate_graph(atoms, bonds):
-        G=nx.Graph()
-        for i,a in enumerate(atoms):
-            G.add_node(a, {'idx':i,'element':a[0]})
-        for b in bonds:
-            if b[0] in atoms and b[1] in atoms:
-                G.add_edge(b[0], b[1], {'idx1':atoms.index(b[0]), 'idx2':atoms.index(b[1])})
-        return G
-    if sys.version_info.major==3:
-        str_type=str
+
+def iterate_rtpfiles(rtpfile):
+    if sys.version_info.major == 3:
+        str_type = str
     elif sys.version_info.major == 2:
-        str_type=basestring
+        str_type = basestring
     else:
         raise ValueError('Unsupported Python version')
-    if isinstance(rtpfile, list) and all([isinstance(e, tuple) for e in rtpfile]):
-        for resname, graph in rtpfile:
-            yield resname, graph
-        return
-    elif isinstance(rtpfile, str_type):
-        if os.path.isdir(rtpfile):
-            rtpfile = [os.path.join(rtpfile,f) for f in os.listdir(rtpfile) if f.endswith('.rtp')]
-        else:
-            rtpfile = [rtpfile]
-    for fn in rtpfile:
+    if os.path.isdir(rtpfile):
+        for f in os.listdir(rtpfile):
+            if f.endswith('.rtp'):
+                yield os.path.join(rtpfile, f)
+    else:
+        yield rtpfile
+
+
+def iterate_residues(rtpfile):
+    for fn in iterate_rtpfiles(rtpfile):
         with open(fn, 'rt') as f:
             lastresidue = None
             lastheader = None
@@ -285,18 +321,18 @@ def graphs_from_rtp(rtpfile):
             for l in f:
                 if l.strip().startswith(';'):
                     continue
-                l=l.strip()
+                l = l.strip()
                 if not l:
                     continue
                 try:
-                    l=l[:l.index(';')].strip()
+                    l = l[:l.index(';')].strip()
                 except ValueError:
                     pass
                 if l.startswith('[') and l.endswith(']'):
                     resname = l[1:-1].strip()
                     if resname not in ['bondedtypes', 'atoms', 'bonds', 'impropers', 'cmap']:
                         if lastresidue is not None:
-                            yield lastresidue, generate_graph(atoms, bonds)
+                            yield lastresidue, atoms, bonds
                         lastresidue = resname
                         atoms = []
                         bonds = []
@@ -307,11 +343,32 @@ def graphs_from_rtp(rtpfile):
                 elif lastheader == 'bonds':
                     bonds.append(l.split()[:2])
             if lastresidue is not None:
-                yield lastresidue, generate_graph(atoms, bonds)
+                yield lastresidue, atoms, bonds
+
+
+def graphs_from_rtp(rtpfile):
+    if isinstance(rtpfile, list) and all([isinstance(e, tuple) for e in rtpfile]):
+        for resname, graph in rtpfile:
+            yield resname, graph
+        return
+
+    def generate_graph(atoms, bonds):
+        G = nx.Graph()
+        for i, a in enumerate(atoms):
+            G.add_node(a, idx=i, element=a[0])
+        for b in bonds:
+            if b[0] in atoms and b[1] in atoms:
+                G.add_edge(b[0], b[1], idx1=atoms.index(b[0]), idx2=atoms.index(b[1]))
+        return G
+
+    for resname, atoms, bonds in iterate_residues(rtpfile):
+        yield resname, generate_graph(atoms, bonds)
+
 
 def match_amino_acid(selection, rtpfile):
     def nodematch(attr1, attr2):
         return attr1['element'] == attr2['element']
+
     Gselection = selection_to_graph(selection)
     for resname, Grtp in graphs_from_rtp(rtpfile):
         gm = nx.algorithms.isomorphism.GraphMatcher(Gselection, Grtp, nodematch)
@@ -321,6 +378,7 @@ def match_amino_acid(selection, rtpfile):
                 cmd.alter('idx {}'.format(m), 'resn="{}"'.format(resname))
             return resname
     return None
+
 
 def select_beta_backbone(selectionname='bbone', originalselection='all'):
     """
@@ -338,12 +396,34 @@ def select_beta_backbone(selectionname='bbone', originalselection='all'):
 
     originalselection = superset in which the backbone will be searched
     """
-    cmd.select(selectionname, '({}) and name CA+CB+CC+C+O+N+HN'.format(originalselection))
+    cmd.select(selectionname, '({}) and name CA+CB+CB1+CC+C+O+N+HN'.format(originalselection))
 
 
-cmd.extend('number_residues', number_residues)
-cmd.extend('number_chains', number_chains)
-cmd.extend('recognize_peptide', recognize_peptide)
-cmd.extend('select_peptide_bonds', select_peptide_bonds)
-cmd.extend('match_amino_acid', match_amino_acid)
-cmd.extend('select_beta_backbone', select_beta_backbone)
+def order_atoms_in_peptide(rtpfile, selection='all'):
+    """
+    DESCRIPTION
+
+    Order the atoms in the peptide according to the Gromacs .rtp database
+
+    USAGE
+
+    order_atoms_in_peptide rtpfile [, selection]
+
+    ARGUMENTS
+
+    rtpfile: either a .rtp file (Gromacs residue topology database) or a Gromacs forcefield directory
+
+    selection: defaults to 'all'
+    """
+    residuetypes = list(iterate_residues(rtpfile))
+    residues = {(a.resi_number, a.resn) for a in cmd.get_model(selection).atom}
+    i = 0
+    for resi, resn in sorted(residues, key=lambda x: x[0]):
+        resn, atomnames, bondtypes = [r for r in residuetypes if r[0] == resn][0]
+        for a in atomnames:
+            print(i, a)
+            cmd.alter('({}) and (resi {}) and (resn {}) and (name {})'.format(selection, resi, resn, a),
+                      'ID={}'.format(i))
+            cmd.alter('({}) and (resi {}) and (resn {}) and (name {})'.format(selection, resi, resn, a),
+                      'rank={}'.format(i))
+            i += 1
