@@ -11,8 +11,9 @@ def find_hbonds(selection_donor_and_hydrogen, selection_acceptor=None, dmin:floa
     if selection_acceptor is None:
         selection_acceptor = selection_donor_and_hydrogen
     for acceptor in iterate_indices('({}) and (e. N+O)'.format(selection_acceptor)):
-        for hydrogen in iterate_indices('({}) and (e. H)'.format(selection_hydrogen)):
-            donor = list(iterate_indices('neighbor ((idx {}) and ({}))'.format(hydrogen, selection_hydrogen)))[0]
+        for hydrogen in iterate_indices('({}) and (e. H) and not (neighbor (idx {} and ({})))'.format(selection_hydrogen, acceptor, selection_acceptor)):
+            donors = list(iterate_indices('neighbor ((idx {}) and ({})) and not ((idx {}) and ({}))'.format(hydrogen, selection_hydrogen, acceptor, selection_acceptor)))
+            donor=donors[0]
             dist = cmd.get_distance('(idx {}) and ({})'.format(hydrogen, selection_hydrogen),
                                     '(idx {}) and ({})'.format(acceptor, selection_acceptor))
             angle = cmd.get_angle('(idx {}) and ({})'.format(donor, selection_donor_and_hydrogen),
@@ -24,7 +25,7 @@ def find_hbonds(selection_donor_and_hydrogen, selection_acceptor=None, dmin:floa
     for donor, hydrogen, acceptor, dist, angle in found_bonds:
         yield (acceptor, hydrogen, dist)
 
-def generate_hbond_constraints(selection, filename, dmin=1, dmax=1, anglemin=135):
+def generate_hbond_constraints(selection, filename, dmin=1, dmax=2.5, anglemin=135):
     """
     DESCRIPTION
 
@@ -52,9 +53,9 @@ def generate_hbond_constraints(selection, filename, dmin=1, dmax=1, anglemin=135
     with open(filename, 'wt') as f:
         f.write('[ constraints ]\n')
         for idx1, idx2, dist in find_hbonds(selection, selection, dmin, dmax, anglemin):
-            f.write('{:10d}{:10d} 2 {:10.4f}\n'.format(idx1[1], idx2[1], dist / 10.))
+            f.write('{:10d}{:10d} 2 {:10.4f}\n'.format(idx1, idx2, dist / 10.))
 
-def generate_hbond_restraints(selection, filename, strength=1000, mindist=1.7, maxdist=2.3, anglemin=135):
+def generate_hbond_restraints(selection, filename, strength=1000, mindist=1.1, maxdist=2.5, anglemin=130):
     """
     DESCRIPTION
 
@@ -101,7 +102,7 @@ def generate_hbond_restraints(selection, filename, strength=1000, mindist=1.7, m
         f.write('[ bonds ]\n')
         for idx1, idx2, dist in find_hbonds(selection, selection, mindist, maxdist, anglemin):
             f.write('{:10d}{:10d} 10 {:10.4f} {:10.4f} {:10.4f} {:.6f}\n'.format(
-                idx1[1], idx2[1], mindist / 10., maxdist/10., maxdist1/10., strength))
+                idx1, idx2, mindist / 10., maxdist/10., maxdist1/10., strength))
 
 def beta_hbonds(selection_hydrogen, selection_acceptor, dmin=1, dmax=3):
     i = 0
