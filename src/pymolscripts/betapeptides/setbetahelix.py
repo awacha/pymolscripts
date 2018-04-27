@@ -1,6 +1,8 @@
 from __future__ import print_function
-
+import logging
 from pymol import cmd
+
+logger=logging.getLogger(__name__)
 
 # torsion angles for various helices taken from:
 # Beke et al., Journal of Computational Chemistry 2006, vol. 27, no. 1 pp. 20-38, DOI 10.1002/jcc.20299
@@ -99,7 +101,7 @@ def helicize_beta_peptide(helixtype, selection='all'):
         for name, sel in [('CA', calpha), ('CB', cbeta), ('C', c), ('N', n), ('prevC', prevc), ('nextN', nextn)]:
             cnt = cmd.count_atoms(sel)
             if cnt != 1:
-                print('Error in residue {}: number of {} atoms found is {}'.format(r, name, cnt))
+                logger.warning('Error in residue {}: number of {} atoms found is {}'.format(r, name, cnt))
                 break
         else:
             set_beta_helix(prevc, n, cbeta, calpha, c, nextn, helixtype, selection)

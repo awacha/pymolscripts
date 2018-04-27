@@ -1,6 +1,6 @@
 from pymol import cmd
 
-from src.pymolscripts.utils import iterate_indices
+from ..utils import iterate_indices
 
 
 def select_wrong_bond_numbers(element, maxnbonds, selectionname='sele'):

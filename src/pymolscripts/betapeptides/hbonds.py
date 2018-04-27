@@ -1,61 +1,107 @@
 from pymol import cmd
 
-from src.pymolscripts.utils import iterate_indices
+from ..utils import iterate_indices
 
+def find_hbonds(selection_donor_and_hydrogen, selection_acceptor=None, dmin:float=1., dmax:float=2.5, anglemin:float=135):
+    dmin = float(dmin)
+    dmax = float(dmax)
+    anglemin = float(anglemin)
+    selection_hydrogen = '({}) and (e. H)'.format(selection_donor_and_hydrogen)
+    found_bonds = []
+    if selection_acceptor is None:
+        selection_acceptor = selection_donor_and_hydrogen
+    for acceptor in iterate_indices('({}) and (e. N+O)'.format(selection_acceptor)):
+        for hydrogen in iterate_indices('({}) and (e. H)'.format(selection_hydrogen)):
+            donor = list(iterate_indices('neighbor ((idx {}) and ({}))'.format(hydrogen, selection_hydrogen)))[0]
+            dist = cmd.get_distance('(idx {}) and ({})'.format(hydrogen, selection_hydrogen),
+                                    '(idx {}) and ({})'.format(acceptor, selection_acceptor))
+            angle = cmd.get_angle('(idx {}) and ({})'.format(donor, selection_donor_and_hydrogen),
+                                  '(idx {}) and ({})'.format(hydrogen, selection_hydrogen),
+                                  '(idx {}) and ({})'.format(acceptor, selection_acceptor))
+            if dist>=dmin and dist<=dmax and angle>=anglemin:
+                found_bonds.append((donor, hydrogen, acceptor, dist, angle))
 
-def iterate_hbonds(selection, name='__hbonds'):
-    # idea stolen from http://pymolwiki.org/index.php/get_raw_distances, Takanori Nakane and Thomas Holder
-    cmd.dist(name, selection, selection, mode=2, label=0)
-    raw_objects = cmd.get_session(name, 1, 1, 0, 0)['names']
-    space = {'xyz2idx': {}}
-    state = cmd.get_state()
-    cmd.iterate_state(state, selection, 'xyz2idx[x,y,z] = (model, index)', space=space)
-    points = raw_objects[0][5][2][state - 1][1]
-    for i in range(0, len(points), 6):
-        x1, y1, z1 = tuple(points[i:i + 3])
-        x2, y2, z2 = tuple(points[i + 3:i + 6])
-        yield space['xyz2idx'][x1, y1, z1], space['xyz2idx'][x2, y2, z2], (
-                    (x1 - x2) ** 2 + (y1 - y2) ** 2 + (z1 - z2) ** 2) ** 0.5
-    cmd.delete(name)
-    return
+    for donor, hydrogen, acceptor, dist, angle in found_bonds:
+        yield (acceptor, hydrogen, dist)
 
+def generate_hbond_constraints(selection, filename, dmin=1, dmax=1, anglemin=135):
+    """
+    DESCRIPTION
 
-def generate_hbond_constraints(selection, filename, name='__hbonds'):
+        Generate distance constraints for hydrogen bonds
+
+    USAGE
+
+        generate_hbond_constraints selection, filename [, dmin [, dmax [, anglemin ]]]
+
+    ARGUMENTS
+
+        selection: the selection to operate on, containing the donors, the acceptors and the hydrogens
+
+        filename: the file name to write the constraints to (a GROMACS .itp file)
+
+        dmin: minimum hydrogen-acceptor distance to consider
+
+        dmax: maximum hydrogen-acceptor distance to consider
+
+        anglemin: minimum donor-hydrogen-acceptor angle to consider
+    """
+    dmin = float(dmin)
+    dmax = float(dmax)
+    anglemin = float(anglemin)
     with open(filename, 'wt') as f:
         f.write('[ constraints ]\n')
-        for idx1, idx2, dist in iterate_hbonds(selection, name):
+        for idx1, idx2, dist in find_hbonds(selection, selection, dmin, dmax, anglemin):
             f.write('{:10d}{:10d} 2 {:10.4f}\n'.format(idx1[1], idx2[1], dist / 10.))
 
+def generate_hbond_restraints(selection, filename, strength=1000, mindist=1.7, maxdist=2.3, anglemin=135):
+    """
+    DESCRIPTION
 
-def generate_hbond_restraints(selection, filename, strength=1000, name='__hbonds'):
+        Generate distance constraints for hydrogen bonds
+
+    USAGE
+
+        generate_hbond_restraints selection, filename [, strength [, mindist [, maxdist [, anglemin ]]]]]
+
+    ARGUMENTS
+
+        selection: the selection to operate on, containing the donors, the acceptors and the hydrogens
+
+        filename: the file name to write the constraints to (a GROMACS .itp file)
+
+        strength: bond strength (kJ mol-1 nm-2)
+
+        mindist: minimum hydrogen-acceptor distance to consider
+
+        maxdist: maximum hydrogen-acceptor distance to consider
+
+        anglemin: minimum donor-hydrogen-acceptor angle to consider
+
+    NOTES
+
+        A GROMACS .itp file will be written. The restraint potential has the form:
+
+                 / 1/2 strength * (r-mindist)^2                                       if r < mindist
+                |
+                |  0                                                                  if mindist <= r < maxdist
+        V(r) = <
+                |  1/2 strength * (r-maxdist)^2                                       if maxdist <= r < maxdist1
+                |
+                 \ 1/2 strength * (maxdist1 - maxdist) * (2*r - maxdist1 - maxdist)   if maxdist1 <= r
+
+        maxdist1 = maxdist + (maxdist-mindist)*0.5 is used.
+    """
+    mindist=float(mindist)
+    maxdist=float(maxdist)
+    maxdist1=maxdist+(maxdist-mindist)*0.5
+    anglemin = float(anglemin)
     strength = float(strength)
     with open(filename, 'wt') as f:
         f.write('[ bonds ]\n')
-        for idx1, idx2, dist in iterate_hbonds(selection, name):
-            f.write('{:10d}{:10d} 6 {:10.4f} {:.6f}\n'.format(idx1[1], idx2[1], dist / 10., strength))
-
-
-def find_hbonds(selection_hydrogen, selection_acceptor, dmin=1, dmax=3):
-    dmin = float(dmin)
-    dmax = float(dmax)
-    for oxygen in iterate_indices(selection_acceptor):
-        hydrogendists = [(h, cmd.get_distance('(idx {}) and ({})'.format(oxygen, selection_acceptor),
-                                              '(idx {}) and ({})'.format(h, selection_hydrogen))) for h in
-                         iterate_indices(selection_hydrogen)]
-        hydrogendists = [(h, d) for h, d in hydrogendists if d >= dmin and d <= dmax]
-        if not hydrogendists:
-            continue
-        hydrogen, dist = sorted(hydrogendists, key=lambda x: x[1])[0]
-        # this hydrogen is the nearest one to this oxygen. Try it the other way round
-        oxygendists = [(o, cmd.get_distance('(idx {}) and ({})'.format(hydrogen, selection_hydrogen),
-                                            '(idx {}) and ({})'.format(o, selection_acceptor))) for o in
-                       iterate_indices(selection_acceptor)]
-        oxygendists = [(o, d) for o, d in oxygendists if d >= dmin and d <= dmax]
-        assert oxygendists
-        o1, dist1 = sorted(oxygendists, key=lambda x: x[1])[0]
-        if o1 == oxygen:
-            yield (oxygen, hydrogen, dist)
-
+        for idx1, idx2, dist in find_hbonds(selection, selection, mindist, maxdist, anglemin):
+            f.write('{:10d}{:10d} 10 {:10.4f} {:10.4f} {:10.4f} {:.6f}\n'.format(
+                idx1[1], idx2[1], mindist / 10., maxdist/10., maxdist1/10., strength))
 
 def beta_hbonds(selection_hydrogen, selection_acceptor, dmin=1, dmax=3):
     i = 0

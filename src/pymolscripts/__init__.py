@@ -21,3 +21,4 @@ cmd.extend('helicize_beta_peptide', betapeptides.setbetahelix.helicize_beta_pept
 cmd.extend('set_beta_helix', betapeptides.setbetahelix.set_beta_helix)
 cmd.extend('select_wrong_bond_numbers', betapeptides.structure_cleaning.select_wrong_bond_numbers)
 cmd.extend('select_intralayer_waters', bilayer.bilayertools.select_intralayer_waters)
+cmd.extend('optimize_beta_helix', betapeptides.helix_optimization.optimize_beta_helix)

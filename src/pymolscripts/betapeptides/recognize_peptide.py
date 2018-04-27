@@ -8,7 +8,7 @@ import networkx as nx
 from chempy import Atom, Bond
 from pymol import cmd
 
-from src.pymolscripts.utils import iterate_indices, iterate_neighbours
+from ..utils import iterate_indices, iterate_neighbours
 
 INVALID_RESID = 0
 
@@ -273,14 +273,35 @@ def fix_gln_hydrogens(selection):
                       'name="HZ22"')
 
 
-def select_peptide_bonds(selection, newselectionprefix='pb_'):
+def select_peptide_bonds(selection:str='all', newselectionprefix:str='pb_'):
+    """
+    DESCRIPTION
+
+        Select the peptide bonds
+
+    USAGE
+
+        select_peptide_bonds [selection [, newselectionprefix]]
+
+    ARGUMENTS
+
+        selection: selection to operate on, typically a peptide/protein. Defaults to 'all'.
+
+        newselectionprefix: the prefix used for the new selection. Defaults to 'pb_'
+
+    NOTES
+
+        A new selection will be created for each peptide bond in the molecule, named as
+        <newselectionprefix><number>, by default pb_0, pb_1, pb_2 etc.
+    """
     i = 0
     for h, n, c, o in find_peptide_bonds(selection):
         cmd.select('{}{}'.format(newselectionprefix, i), 'idx {}+{}+{}+{}'.format(h, n, c, o))
         i += 1
 
 
-def selection_to_graph(selection):
+def selection_to_graph(selection:str):
+    """Make a graph from a selection"""
     G = nx.Graph()
     model = cmd.get_model(selection)
     for atom in model.atom:
