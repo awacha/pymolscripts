@@ -1,6 +1,7 @@
 from __future__ import print_function
 import logging
 from pymol import cmd
+import collections, numbers, itertools
 
 logger=logging.getLogger(__name__)
 
@@ -42,15 +43,23 @@ def set_beta_helix(prevC, N, CB, CA, C, nextN, helixtype, selection='all'):
         helixparam = [h for h in helixtypes if h[0] == helixtype or h[1] == helixtype][0]
         angles = helixparam[2]
     except IndexError:
-        # try to interpret helixtype as a tuple or a list
-        helixtype.strip()
-        try:
-            if (helixtype.startswith('(') and helixtype.endswith(')')) or (
-                    helixtype.startswith('[') and helixtype.endswith(']')):
-                helixtype = helixtype[1:-1]
-                angles = [float(x.strip()) for x in helixtype.split(',')]
-        except:
+        if isinstance(helixtype, str):
+            # try to interpret helixtype as a tuple or a list
+            helixtype=helixtype.strip()
+            try:
+                if (helixtype.startswith('(') and helixtype.endswith(')')) or (
+                        helixtype.startswith('[') and helixtype.endswith(']')):
+                    helixtype = helixtype[1:-1]
+                    angles = [float(x.strip()) for x in helixtype.split(',')]
+            except:
+                raise ValueError('Unknown helix type: {}'.format(helixtype))
+        elif (isinstance(helixtype, collections.Sequence) and
+            all([isinstance(x, numbers.Real) for x in helixtype])):
+            angles = helixtype
+        else:
             raise ValueError('Unknown helix type: {}'.format(helixtype))
+
+    print('Helixtype in set_beta_helix: {} (type: {})'.format(helixtype, type(helixtype)))
     atoms = ['({}) and ({})'.format(selection, atomidx) for atomidx in [prevC, N, CB, CA, C, nextN]]
     for i, angle in enumerate(angles):
         cmd.set_dihedral(*(atoms[i:i + 4] + [angle]))
@@ -82,16 +91,31 @@ def helicize_beta_peptide(helixtype, selection='all'):
     ARGUMENTS
     
     helixtype = the type of the helix (either short or IUPAC name),
-        or a tuple of 3 floats, representing three torsional angles
+        or a tuple of 3 floats, representing three torsional angles, or
+        a list of tuples / short names / IUPAC names.
     
     selection = the selection to operate on. Must be a single peptide chain with 
         unique residue IDs (default: all)
     
     NOTES"""
+
+    if isinstance(helixtype, str):
+        for perczelname, iupacname, angles, theorylevel in helixtypes:
+            helixtype = helixtype.replace(iupacname, perczelname).replace(perczelname, '({}, {}, {})'.format(*angles))
+        helixtype=helixtype.strip()
+        if not all([h in '0123456789.,()[] -+efg' for h in helixtype]):
+            raise ValueError('Helixtype parameter contains an invalid character (only numbers, parentheses, brackets, space and commas are accepted)')
+        helixtype = eval(helixtype, {}, {})
+    assert isinstance(helixtype, collections.Iterable)
+    if all([isinstance(x, numbers.Real) for x in helixtype]) and len(helixtype) == 3:
+        helixtype = [helixtype]
+    print('Helixtypes: {}'.format(helixtype))
     space = {'lis': []}
     cmd.iterate(selection, 'lis.append(resv)', space=space)
-    residues = set(space['lis'])
-    for r in residues:
+    residues = sorted(set(space['lis']))
+    for r, ht in zip(sorted(residues), itertools.cycle(helixtype)):
+        if len(ht)!=3 and not all([isinstance(x, numbers.Real) for x in ht]):
+            raise ValueError('Invalid helixtype: {}'.format(ht))
         calpha = '({}) and (name CA) and (resi {})'.format(selection, r)
         cbeta = '({}) and (name CB+CB1) and (resi {})'.format(selection, r)
         c = '({}) and (name C) and (resi {})'.format(selection, r)
@@ -101,10 +125,10 @@ def helicize_beta_peptide(helixtype, selection='all'):
         for name, sel in [('CA', calpha), ('CB', cbeta), ('C', c), ('N', n), ('prevC', prevc), ('nextN', nextn)]:
             cnt = cmd.count_atoms(sel)
             if cnt != 1:
-                logger.warning('Error in residue {}: number of {} atoms found is {}'.format(r, name, cnt))
+                #logger.warning('Error in residue {}: number of {} atoms found is {}'.format(r, name, cnt))
                 break
         else:
-            set_beta_helix(prevc, n, cbeta, calpha, c, nextn, helixtype, selection)
+            set_beta_helix(prevc, n, cbeta, calpha, c, nextn, ht, selection)
     cmd.orient(selection)
 
 
