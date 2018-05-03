@@ -55,11 +55,11 @@ def generate_hbond_constraints(selection, filename, dmin=1, dmax=2.5, anglemin=1
         for idx1, idx2, dist in find_hbonds(selection, selection, dmin, dmax, anglemin):
             f.write('{:10d}{:10d} 2 {:10.4f}\n'.format(idx1, idx2, dist / 10.))
 
-def generate_hbond_restraints(selection, filename, strength=1000, mindist=1.1, maxdist=2.5, anglemin=130):
+def generate_hbond_restraints_piecewise(selection, filename, strength=1000, mindist=1.1, maxdist=2.5, anglemin=130):
     """
     DESCRIPTION
 
-        Generate distance constraints for hydrogen bonds
+        Generate piecewise distance restraints for hydrogen bonds
 
     USAGE
 
@@ -101,8 +101,53 @@ def generate_hbond_restraints(selection, filename, strength=1000, mindist=1.1, m
     with open(filename, 'wt') as f:
         f.write('[ bonds ]\n')
         for idx1, idx2, dist in find_hbonds(selection, selection, mindist, maxdist, anglemin):
-            f.write('{:10d}{:10d} 10 {:10.4f} {:10.4f} {:10.4f} {:.6f}\n'.format(
-                idx1, idx2, mindist / 10., maxdist/10., maxdist1/10., strength))
+            f.write('{:10d}{:10d} 10 {:10.4f} {:10.4f} {:10.4f} {:.6f} # original distance: {:.6f}\n'.format(
+                idx1, idx2, mindist / 10., maxdist/10., maxdist1/10., strength, dist/10.))
+
+def generate_hbond_restraints_harmonic(selection, filename, strength=1000, distance=1.8, mindist_detect=1.1, maxdist_detect=2.5, anglemin_detect=130):
+    """
+    DESCRIPTION
+
+        Generate harmonic distance restraints for hydrogen bonds
+
+    USAGE
+
+        generate_hbond_restraints_harmonic selection, filename [, strength [, distance [, mindist_detect [, maxdist_detect [, anglemin_detect ]]]]]]
+
+    ARGUMENTS
+
+        selection: the selection to operate on, containing the donors, the acceptors and the hydrogens
+
+        filename: the file name to write the constraints to (a GROMACS .itp file)
+
+        strength: bond strength (kJ mol-1 nm-2) (default: 1000)
+
+        distance: the hydrogen-acceptor distance to restrain to (default: 1.8 A)
+
+        mindist_detect: minimum hydrogen-acceptor distance to consider (default: 1.1 A)
+
+        maxdist_detect: maximum hydrogen-acceptor distance to consider (default: 2.5 A)
+
+        anglemin_detect: minimum donor-hydrogen-acceptor angle to consider (default: 100°)
+
+    NOTES
+
+        A GROMACS .itp file will be written. The restraint potential has the form:
+
+        V(r) = strength * ( r - distance )^2
+
+    """
+    mindist=float(mindist_detect)
+    maxdist=float(maxdist_detect)
+    anglemin = float(anglemin_detect)
+    strength = float(strength)
+    distance = float(distance)
+    with open(filename, 'wt') as f:
+        f.write('[ bonds ]\n')
+        for idx1, idx2, dist in find_hbonds(selection, selection, mindist, maxdist, anglemin):
+            f.write('{:10d}{:10d} 6 {:10.4f} {:.6f} # original distance: {:.6f}\n'.format(
+                idx1, idx2, distance/10., strength, dist/10.))
+
 
 def beta_hbonds(selection_hydrogen, selection_acceptor, dmin=1, dmax=3):
     i = 0
