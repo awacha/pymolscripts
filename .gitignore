@@ -2,6 +2,7 @@
 /build
 /dist
 /pymolscripts.egg-info
+src/pymolscripts.egg-info
 *~
 *.pyc
 /.eggs
