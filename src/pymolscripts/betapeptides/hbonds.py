@@ -101,7 +101,7 @@ def generate_hbond_restraints_piecewise(selection, filename, strength=1000, mind
     with open(filename, 'wt') as f:
         f.write('[ bonds ]\n')
         for idx1, idx2, dist in find_hbonds(selection, selection, mindist, maxdist, anglemin):
-            f.write('{:10d}{:10d} 10 {:10.4f} {:10.4f} {:10.4f} {:.6f} # original distance: {:.6f}\n'.format(
+            f.write('{:10d}{:10d} 10 {:10.4f} {:10.4f} {:10.4f} {:.6f} ; original distance: {:.6f}\n'.format(
                 idx1, idx2, mindist / 10., maxdist/10., maxdist1/10., strength, dist/10.))
 
 def generate_hbond_restraints_harmonic(selection, filename, strength=1000, distance=1.8, mindist_detect=1.1, maxdist_detect=2.5, anglemin_detect=130):
@@ -145,7 +145,7 @@ def generate_hbond_restraints_harmonic(selection, filename, strength=1000, dista
     with open(filename, 'wt') as f:
         f.write('[ bonds ]\n')
         for idx1, idx2, dist in find_hbonds(selection, selection, mindist, maxdist, anglemin):
-            f.write('{:10d}{:10d} 6 {:10.4f} {:.6f} # original distance: {:.6f}\n'.format(
+            f.write('{:10d}{:10d} 6 {:10.4f} {:.6f} ; original distance: {:.6f}\n'.format(
                 idx1, idx2, distance/10., strength, dist/10.))
 
 
