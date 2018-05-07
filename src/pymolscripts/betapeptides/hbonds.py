@@ -2,6 +2,35 @@ from pymol import cmd
 
 from ..utils import iterate_indices
 
+def unbond_close_hydrogen_bonds(selection='all'):
+    """
+    DESCRIPTION
+
+        Removes spurious chemical bonds between an amide hydrogen and an amide
+        oxygen in a peptide/protein
+
+    USAGE
+
+        unbond_close_hydrogen_bonds [selection]
+
+    ARGUMENTS
+
+        selection: the selection to operate on, containing the acceptors and
+        the hydrogens (defaults to 'all')
+
+    NOTES
+
+        Some molecular formats do not save bond information. In this case Pymol
+        tries to guess bonds based on inter-atomic distances, which sometimes
+        results in spurious bonds between atoms which lie too close. This
+        function removes these bonds between a hydrogen bond acceptor and a
+        hydrogen of a peptide bond.
+    """
+
+    for oxygen in iterate_indices('({}) and (e. O) and name O'.format(selection)):
+        for hydrogen in iterate_indices('({}) and (neighbor idx {}) and name HN and e. H'.format(selection, oxygen)):
+            cmd.unbond('({}) and idx {}'.format(selection, oxygen), '({}) and idx {}'.format(selection, hydrogen))
+
 def find_hbonds(selection_donor_and_hydrogen, selection_acceptor=None, dmin:float=1., dmax:float=2.5, anglemin:float=135):
     dmin = float(dmin)
     dmax = float(dmax)
@@ -11,6 +40,7 @@ def find_hbonds(selection_donor_and_hydrogen, selection_acceptor=None, dmin:floa
     if selection_acceptor is None:
         selection_acceptor = selection_donor_and_hydrogen
     for acceptor in iterate_indices('({}) and (e. N+O)'.format(selection_acceptor)):
+        print('Trying acceptor idx {}'.format(acceptor))
         for hydrogen in iterate_indices('({}) and (e. H) and not (neighbor (idx {} and ({})))'.format(selection_hydrogen, acceptor, selection_acceptor)):
             donors = list(iterate_indices('neighbor ((idx {}) and ({})) and not ((idx {}) and ({}))'.format(hydrogen, selection_hydrogen, acceptor, selection_acceptor)))
             donor=donors[0]
