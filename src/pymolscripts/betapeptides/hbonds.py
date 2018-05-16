@@ -134,7 +134,7 @@ def generate_hbond_restraints_piecewise(selection, filename, strength=1000, mind
             f.write('{:10d}{:10d} 10 {:10.4f} {:10.4f} {:10.4f} {:.6f} ; original distance: {:.6f}\n'.format(
                 idx1, idx2, mindist / 10., maxdist/10., maxdist1/10., strength, dist/10.))
 
-def generate_hbond_restraints_harmonic(selection, filename, strength=1000, distance=1.8, mindist_detect=1.1, maxdist_detect=2.5, anglemin_detect=130):
+def generate_hbond_restraints_harmonic(selection, filename, strength=1000, distance=None, mindist_detect=1.1, maxdist_detect=2.5, anglemin_detect=130):
     """
     DESCRIPTION
 
@@ -152,7 +152,7 @@ def generate_hbond_restraints_harmonic(selection, filename, strength=1000, dista
 
         strength: bond strength (kJ mol-1 nm-2) (default: 1000)
 
-        distance: the hydrogen-acceptor distance to restrain to (default: 1.8 A)
+        distance: the hydrogen-acceptor distance to restrain to (default: the current value)
 
         mindist_detect: minimum hydrogen-acceptor distance to consider (default: 1.1 A)
 
@@ -171,12 +171,16 @@ def generate_hbond_restraints_harmonic(selection, filename, strength=1000, dista
     maxdist=float(maxdist_detect)
     anglemin = float(anglemin_detect)
     strength = float(strength)
-    distance = float(distance)
+    if distance is not None:
+        distance = float(distance)
+
     with open(filename, 'wt') as f:
+        f.write('; hydrogen bond distance restraints\n')
         f.write('[ bonds ]\n')
+        f.write(';       ai        aj  funct        b0     kb       b0_B   kb_B\n')
         for idx1, idx2, dist in find_hbonds(selection, selection, mindist, maxdist, anglemin):
-            f.write('{:10d}{:10d} 6 {:10.4f} {:.6f} ; original distance: {:.6f}\n'.format(
-                idx1, idx2, distance/10., strength, dist/10.))
+            f.write('{:10d}{:10d}   6   {:10.4f} {:.6f} {:10.4f} {:.6f}; original distance: {:.6f}\n'.format(
+                idx1, idx2, distance/10. if distance is not None else dist/10., strength, distance/10. if distance is not None else dist/10., 0.0, dist/10.))
 
 
 def beta_hbonds(selection_hydrogen, selection_acceptor, dmin=1, dmax=3):

@@ -62,6 +62,9 @@ def set_beta_helix(prevC, N, CB, CA, C, nextN, helixtype, selection='all'):
     print('Helixtype in set_beta_helix: {} (type: {})'.format(helixtype, type(helixtype)))
     atoms = ['({}) and ({})'.format(selection, atomidx) for atomidx in [prevC, N, CB, CA, C, nextN]]
     for i, angle in enumerate(angles):
+        if any([cmd.count_atoms(atoms[i+j])!=1 for j in range(4)]):
+            # if any of the selections contains zero or more than one atoms, do not set the dihedral.
+            continue
         cmd.set_dihedral(*(atoms[i:i + 4] + [angle]))
     cmd.delete('pk1')
     cmd.delete('pk2')
@@ -126,13 +129,7 @@ def helicize_beta_peptide(helixtype, selection='all'):
         hn = '(neighbor ({})) and (name H+HN)'.format(n)
         o = '(neighbor ({})) and (name O)'.format(c)
         nexthn = '(neighbor ({})) and (name H+HN)'.format(nextn)
-        for name, sel in [('CA', calpha), ('CB', cbeta), ('C', c), ('N', n), ('prevC', prevc), ('nextN', nextn)]:
-            cnt = cmd.count_atoms(sel)
-            if cnt != 1:
-                #logger.warning('Error in residue {}: number of {} atoms found is {}'.format(r, name, cnt))
-                break
-        else:
-            set_beta_helix(prevc, n, cbeta, calpha, c, nextn, ht, selection)
+        set_beta_helix(prevc, n, cbeta, calpha, c, nextn, ht, selection)
         for n_, h_, c_, o_ in [
             (n, hn, prevc, prevo),
             (nextn, nexthn, c, o)
