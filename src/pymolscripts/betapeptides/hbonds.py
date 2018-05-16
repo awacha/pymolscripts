@@ -175,10 +175,12 @@ def generate_hbond_restraints_harmonic(selection, filename, strength=1000, dista
         distance = float(distance)
 
     with open(filename, 'wt') as f:
+        f.write('; hydrogen bond distance restraints\n')
         f.write('[ bonds ]\n')
+        f.write(';       ai        aj  funct        b0     kb       b0_B   kb_B\n')
         for idx1, idx2, dist in find_hbonds(selection, selection, mindist, maxdist, anglemin):
-            f.write('{:10d}{:10d} 6 {:10.4f} {:.6f} ; original distance: {:.6f}\n'.format(
-                idx1, idx2, distance/10. if distance is not None else dist/10., strength, dist/10.))
+            f.write('{:10d}{:10d}   6   {:10.4f} {:.6f} {:10.4f} {:.6f}; original distance: {:.6f}\n'.format(
+                idx1, idx2, distance/10. if distance is not None else dist/10., strength, distance/10. if distance is not None else dist/10., 0.0, dist/10.))
 
 
 def beta_hbonds(selection_hydrogen, selection_acceptor, dmin=1, dmax=3):
