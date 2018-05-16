@@ -122,6 +122,10 @@ def helicize_beta_peptide(helixtype, selection='all'):
         n = '({}) and (name N) and (resi {})'.format(selection, r)
         prevc = '(neighbor ({})) and (name C)'.format(n)
         nextn = '(neighbor ({})) and (name N)'.format(c)
+        prevo = '(neighbor ({})) and (name O)'.format(prevc)
+        hn = '(neighbor ({})) and (name H+HN)'.format(n)
+        o = '(neighbor ({})) and (name O)'.format(c)
+        nexthn = '(neighbor ({})) and (name H+HN)'.format(nextn)
         for name, sel in [('CA', calpha), ('CB', cbeta), ('C', c), ('N', n), ('prevC', prevc), ('nextN', nextn)]:
             cnt = cmd.count_atoms(sel)
             if cnt != 1:
@@ -129,6 +133,12 @@ def helicize_beta_peptide(helixtype, selection='all'):
                 break
         else:
             set_beta_helix(prevc, n, cbeta, calpha, c, nextn, ht, selection)
+        for n_, h_, c_, o_ in [
+            (n, hn, prevc, prevo),
+            (nextn, nexthn, c, o)
+        ]:
+            if cmd.count_atoms(n_) + cmd.count_atoms(h_) + cmd.count_atoms(c_) + cmd.count_atoms(o_) == 4:
+                cmd.set_dihedral(h_,n_,c_,o_,180.)
     cmd.orient(selection)
 
 
